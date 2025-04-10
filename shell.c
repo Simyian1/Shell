@@ -1,5 +1,6 @@
 #include "shell.h"
 
+/*
 int main(int argc, char **argv) {
   if (argc == 2 && equal(argv[1], "--interactive")) {
     return interactiveShell();
@@ -7,7 +8,7 @@ int main(int argc, char **argv) {
     return runTests();
   }
 }
-
+*/
 // interactive shell to process commands
 int interactiveShell() {
   bool should_run = true;

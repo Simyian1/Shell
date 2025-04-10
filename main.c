@@ -1,4 +1,18 @@
+
+
+
+
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "shell.c"
+
+
+char **tokenize(char *line);
 // ============================================================================
+
 // Execute a child process.  
 // Returns -1
 // on failure.  On success, does not return to caller.
@@ -97,6 +111,7 @@ int main()
     
     // process lines
     char **args = tokenize(line); // split string into tokens
+    /*
     // loop over to find chunk of independent commands and execute
     while (args[start] != NULL)
     {
@@ -107,6 +122,7 @@ int main()
     }
     start = 0;              // next line
     // remember current command into history
+    */
   }
   return 0;
 }
@@ -133,5 +149,34 @@ bool parse(char **args, int start, int *end)
 // ============================================================================
 char **tokenize(char *line)
 {
+  char** tokens;
+  int tknCnt = 0;
+  char* linecpy = strdup(line);
 
+  char* token;
+  token = strtok(linecpy, " ");
+  while(token != NULL)
+  {
+    tknCnt++;
+    token = strtok(NULL, " ");
+  }
+  free(linecpy);
+
+  linecpy = strdup(line);
+
+  int i = 0;
+  tokens = (char**)malloc((tknCnt+1) * sizeof(char*));
+  token = strtok(linecpy, " ");
+  while(token != NULL)
+  {
+    tokens[i++] = token;
+    token = strtok(NULL, " ");
+  }
+  tokens[tknCnt] = NULL;
+  printf("Tokens:\n");
+  for(int i = 0; i < tknCnt; i++)
+  {
+    printf("%s\n", tokens[i]);
+  }
+  free(linecpy);
 }
