@@ -173,10 +173,6 @@ char **tokenize(char *line)
     token = strtok(NULL, " ");
   }
   tokens[tknCnt] = NULL;
-  printf("Tokens:\n");
-  for(int i = 0; i < tknCnt; i++)
-  {
-    printf("%s\n", tokens[i]);
-  }
+  
   free(linecpy);
 }
