@@ -1,1 +1,2 @@
-Contributors: Simon Little, 
+##Contributors
+Simon Little, Ruslan Romanenko
