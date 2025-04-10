@@ -8,9 +8,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "shell.c"
+#include <sys/wait.h>
+
 
 
 char **tokenize(char *line);
+bool parse(char **args, int start, int *end);
 // ============================================================================
 
 // Execute a child process.  
@@ -45,6 +48,9 @@ int child(char **args)
   return -1;
 }
 
+
+
+
 // ============================================================================
 // Execute the shell command that starts at args[start] and ends at args[end].
 // For example, with
@@ -59,7 +65,32 @@ void doCommand(char **args, int start, int end, bool waitfor)
 // you will have your classic fork() like implementation here. 
 // always execute your commands in child. so pass in arguments there 
 // based on waitfor flag, in parent implement wait or not wait  based on & or ;  
+  int status;
 
+  char** argsCurrent = (char**)malloc((end - start + 1) * sizeof(char*));
+
+  for(int i = start + 1, j = 0; i <= end; ++i, ++j)
+  {
+    argsCurrent[j] = args[i];
+  }
+  argsCurrent[end - start] = NULL;
+
+  int pid = fork();
+  if (pid < 0) {
+   
+  } else if (pid == 0) {
+    // Child
+    int rc = execvp(args[start], argsCurrent);
+    // If exec() succeeds, it never returns
+  
+  } else {
+    // parent
+    if(!waitfor)
+    {
+      wait(&status);
+    }
+    free(argsCurrent);
+  }
 }
 
 // ============================================================================
@@ -111,18 +142,18 @@ int main()
     
     // process lines
     char **args = tokenize(line); // split string into tokens
-    /*
+    
     // loop over to find chunk of independent commands and execute
     while (args[start] != NULL)
     {
-      int end;
-      bool waitfor = parse(...)// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
-      doCommand(args, start, end, waitfor);    // execute sub-command
-      start = end + 2;                         // next command
+      int* end;
+      bool waitfor = parse(args, start, end);// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
+      doCommand(args, start, *end, waitfor);    // execute sub-command
+      start = *end + 2;                         // next command
     }
     start = 0;              // next line
     // remember current command into history
-    */
+    
   }
   return 0;
 }
@@ -140,6 +171,23 @@ int main()
 // ============================================================================
 bool parse(char **args, int start, int *end)
 {
+  char **curr = args + start;
+
+  // set end index
+  *end = start;
+  
+  // go until you've hit ';', '&', or end of line.
+  while (*curr != NULL && !equal(*curr, "&") && !equal(*curr, ";")) {
+    (*end)++; // update end index
+    curr++; // go to the next string
+  }
+
+  // to avoid errors with putting NULL into equal
+  if (*curr == NULL) {
+    return true;
+  }
+
+  return !equal(*curr, "&"); 
 }
 
 // ============================================================================
@@ -173,6 +221,6 @@ char **tokenize(char *line)
     token = strtok(NULL, " ");
   }
   tokens[tknCnt] = NULL;
-  
-  free(linecpy);
+
+  return tokens;
 }
