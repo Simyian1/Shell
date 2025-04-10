@@ -1,8 +1,6 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 # Shell
-
-## Collaborators
-Simon Little and Ruslan Romanenko
-=======
-Contributors: Simon Little, 
->>>>>>> Code works now, tokenizer added
+## Contributors
+Simon Little, Ruslan Romanenko
+>>>>>>> 2546426f2f2ab3c4a96fc6176f98d4d567264b96
