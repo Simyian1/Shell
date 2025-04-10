@@ -1,1 +1,1 @@
-# Shell
+Contributors: Simon Little, 
