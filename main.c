@@ -1,7 +1,3 @@
-
-
-
-
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -16,6 +12,7 @@ char **tokenize(char *line);
 bool parse(char **args, int start, int *end);
 char** cleanArgs(char **args);
 int doPipe(char **args, int pipei);
+void processCommand(char **args);
 
 enum{READ, WRITE};
 // ============================================================================
@@ -241,14 +238,11 @@ int doPipe(char **args, int pipei)
     // add NULL at the end of the right token array
     rightTokens[rightCount] = NULL;
     
-    //clean args made----------------
-    char **clArgs = cleanArgs(rightTokens);
-    free(rightTokens);
-
     // execute right command
-    execvp(clArgs[0], clArgs);
-    free(clArgs);
-    perror("execvp failed for RIGHT command"); // shouldn't run if execvp succeeds
+    
+    processCommand(rightTokens);
+    for(int i=0; i < rightCount; i++) free(rightTokens[i]);
+    free(rightTokens);
     exit(EXIT_FAILURE);
 
   }
@@ -257,7 +251,21 @@ int doPipe(char **args, int pipei)
 
 }
 
+void processCommand(char **args)
+{
+  int start = 0;
+  int tknCnt = 0;
+  while(args[tknCnt] != NULL) tknCnt++;
 
+  while(start < tknCnt)
+  {
+    int end;
+    bool waitfor = parse(args, start, &end);
+    if(end >= start) doCommand(args, start, end, waitfor);
+    start = end + 1;
+    while(args[start] && (equal(args[start], "&") || equal(args[start], ";"))) start++;
+  }
+}
 
 // ============================================================================
 // Main loop for our Unix shell interpreter
