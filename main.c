@@ -66,10 +66,10 @@ void doCommand(char **args, int start, int end, bool waitfor)
 // always execute your commands in child. so pass in arguments there 
 // based on waitfor flag, in parent implement wait or not wait  based on & or ;  
   int status;
-
-  char** argsCurrent = (char**)malloc((end - start + 1) * sizeof(char*));
-
-  for(int i = start + 1, j = 0; i <= end; ++i, ++j)
+  if(end < start) return;
+  char** argsCurrent = (char**)malloc((end - start + 2) * sizeof(char*));
+  
+  for(int i = start, j = 0; i <= end; i++, j++)
   {
     argsCurrent[j] = args[i];
   }
@@ -80,12 +80,13 @@ void doCommand(char **args, int start, int end, bool waitfor)
    
   } else if (pid == 0) {
     // Child
-    int rc = execvp(args[start], argsCurrent);
+    child(argsCurrent);
     // If exec() succeeds, it never returns
-  
+    free(argsCurrent);
+    exit(1);
   } else {
     // parent
-    if(!waitfor)
+    if(waitfor)
     {
       wait(&status);
     }
@@ -118,6 +119,7 @@ int main()
 {
   bool should_run = true;          // loop until false
   char *line = calloc(1, MAXLINE); // holds user input
+  char *history = calloc(1, MAXLINE);
 
   int start = 0; // index into args array
   while (should_run)
@@ -138,6 +140,15 @@ int main()
     if (equal(line, "!!"))
     {
       // gethistory
+      if(history == NULL)
+      {
+        printf("No commands in history.\n");
+        continue;
+      }
+      else
+      {
+        strcpy(line, history);
+      }
     }
     
     // process lines
@@ -146,15 +157,24 @@ int main()
     // loop over to find chunk of independent commands and execute
     while (args[start] != NULL)
     {
-      int* end;
-      bool waitfor = parse(args, start, end);// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
-      doCommand(args, start, *end, waitfor);    // execute sub-command
-      start = *end + 2;                         // next command
+      int end;
+      bool waitfor = parse(args, start, &end);// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
+      doCommand(args, start, end, waitfor);    // execute sub-command
+      start = end + 1;                       // next command
+      while (args[start] != NULL && (equal(args[start], "&") || equal(args[start], ";"))) start++;
     }
     start = 0;              // next line
     // remember current command into history
+    strcpy(history, line);
     
+    for(int i = 0; args[i] != NULL; ++i)
+    {
+      free(args[i]);
+    }
+      free(args);
   }
+  
+  free(history);
   return 0;
 }
 
@@ -217,10 +237,12 @@ char **tokenize(char *line)
   token = strtok(linecpy, " ");
   while(token != NULL)
   {
-    tokens[i++] = token;
+    tokens[i++] = strdup(token);
     token = strtok(NULL, " ");
   }
   tokens[tknCnt] = NULL;
+
+  free(linecpy);
 
   return tokens;
 }
