@@ -69,11 +69,12 @@ void doCommand(char **args, int start, int end, bool waitfor)
   if(end < start) return;
   char** argsCurrent = (char**)malloc((end - start + 2) * sizeof(char*));
   
-  for(int i = start, j = 0; i <= end; i++, j++)
+  int j = 0;
+  for(int i = start; i <= end; i++, j++)
   {
     argsCurrent[j] = args[i];
   }
-  argsCurrent[end - start] = NULL;
+  argsCurrent[j] = NULL;
 
   int pid = fork();
   if (pid < 0) {
@@ -154,8 +155,12 @@ int main()
     // process lines
     char **args = tokenize(line); // split string into tokens
     
+    int tokenCount = 0;
+    while (args[tokenCount] != NULL) tokenCount++;
+
+
     // loop over to find chunk of independent commands and execute
-    while (args[start] != NULL)
+    while (start < tokenCount)
     {
       int end;
       bool waitfor = parse(args, start, &end);// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
@@ -201,6 +206,7 @@ bool parse(char **args, int start, int *end)
     (*end)++; // update end index
     curr++; // go to the next string
   }
+  *end = *end -1;
 
   // to avoid errors with putting NULL into equal
   if (*curr == NULL) {
