@@ -1,0 +1,7 @@
+README.md
+a.out
+main.c
+output.txt
+runit.sh
+shell.c
+shell.h

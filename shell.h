@@ -12,14 +12,8 @@
 #define MAXLINE 80
 #define PROMPT "osh> "
 
-#define RD 0
-#define WR 1
 
 bool equal(char *a, char *b);
 int fetchline(char **line);
-int interactiveShell();
-int runTests();
-void processLine(char *line);
-int main();
 
 #endif

@@ -14,6 +14,10 @@
 
 char **tokenize(char *line);
 bool parse(char **args, int start, int *end);
+char** cleanArgs(char **args);
+int doPipe(char **args, int pipei);
+
+enum{READ, WRITE};
 // ============================================================================
 
 // Execute a child process.  
@@ -23,19 +27,44 @@ bool parse(char **args, int start, int *end);
 int child(char **args)
 {
   int i = 0;
+  int fd;
+
   while (args[i] != NULL)
   {
     if (equal(args[i], ">"))
     {
-     // open the corresponding file and use dup to direct stdout to file
+      // open the corresponding file and use dup to direct stdout to file
+      fd = open(args[i+1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      
+      if (fd < 0) {
+        perror("File was not opened correctly");
+        exit(1);
+      }
+
+      if (dup2(fd, 1) < 0) {
+        perror("Pipe redirect failed.");
+      }
+      i += 2;
     }
     else if (equal(args[i], "<"))
     {
-     // open the corresponding file and use dup to pull stdin from file
+      // open the corresponding file and use dup to pull stdin from file
+      fd = open(args[i+1], O_RDONLY, 0644);
+      if (fd < 0) {
+        perror("File was not opened correctly");
+        exit(1);
+      }
+
+      if (dup2(fd, 0) < 0) {
+        perror("Pipe redirect failed.");
+      }
+      i += 2;
     }
     else if (equal(args[i], "|"))
     { 
-     // do pipe in a separate function
+      // do pipe in a separate function
+      doPipe(args, i);
+      i++;
     }
     else
     {
@@ -43,12 +72,37 @@ int child(char **args)
     }
   }
 
+  //clean args made----------------
+  char **clArgs = cleanArgs(args);
+
   // call execvp on prepared arguments after while loop ends. You can modify arguments as you loop over the arguments above.
-  execvp(args[0], args);
+  execvp(clArgs[0], clArgs);
+  free(clArgs);
+  close(fd);
   return -1;
 }
 
-
+char** cleanArgs(char **args)
+{
+  int i = 0;
+  while (args[i] != NULL) i++;
+  //clean args made----------------
+  char ** clArgs = malloc((i + 1) * sizeof(char *));
+  int cleanI = 0;
+  for(int j = 0; args[j] != NULL; j++)
+  {
+      if(equal(args[j], ">") || equal(args[j], "<"))
+      {
+          j++; 
+      }
+      else
+      {
+        clArgs[cleanI++] = args[j];
+      }
+  }
+  clArgs[cleanI] = NULL;
+  return clArgs;
+}
 
 
 // ============================================================================
@@ -67,6 +121,7 @@ void doCommand(char **args, int start, int end, bool waitfor)
 // based on waitfor flag, in parent implement wait or not wait  based on & or ;  
   int status;
   if(end < start) return;
+  //args current made -------------------------
   char** argsCurrent = (char**)malloc((end - start + 2) * sizeof(char*));
   
   int j = 0;
@@ -77,13 +132,10 @@ void doCommand(char **args, int start, int end, bool waitfor)
   argsCurrent[j] = NULL;
 
   int pid = fork();
-  if (pid < 0) {
-   
-  } else if (pid == 0) {
+  if (pid == 0) {
     // Child
     child(argsCurrent);
-    // If exec() succeeds, it never returns
-    free(argsCurrent);
+
     exit(1);
   } else {
     // parent
@@ -91,7 +143,9 @@ void doCommand(char **args, int start, int end, bool waitfor)
     {
       wait(&status);
     }
+
     free(argsCurrent);
+    //args current freedParent -------------------------
   }
 }
 
@@ -108,6 +162,98 @@ void doCommand(char **args, int start, int end, bool waitfor)
 // ============================================================================
 int doPipe(char **args, int pipei)
 {
+  // ---------- CREATE PIPE ----------
+  int pipeFD[2];
+
+  if(pipe(pipeFD) < 0) {
+    perror("failed making the pipe! :(");
+    return -1;
+  }
+
+  pid_t pid = fork();
+  
+  if (pid < 0) {
+    perror("fork failed for LEFT command");
+    return -1;
+  }
+
+  // ------------ PARENT BUSINESS ------------
+
+  if (pid > 0) {
+    // parent doesn't need to read
+    close(pipeFD[READ]);
+
+    if (dup2(pipeFD[1], 1) < 0) {
+      perror("dup2 failed in RIGHT child");
+      exit(EXIT_FAILURE);
+    }
+
+    // allocate and copy LEFT tokens
+    int leftCount = pipei; // where '|' is.
+    char **leftTokens = malloc((leftCount + 1) * sizeof(char*));
+
+    if (leftTokens == NULL) {
+      perror("malloc failed for left tokens");
+      return -1;
+    }
+
+    for (int i = 0; i < leftCount; i++) leftTokens[i] = args[i];   
+    
+    // add NULL at the end of the left token array
+    leftTokens[leftCount] = NULL;
+    
+    //clean args made----------------
+    char **clArgs = cleanArgs(leftTokens);
+    free(leftTokens);
+    
+    // execute left command
+    execvp(clArgs[0], clArgs);
+    free(clArgs);
+    perror("execvp failed for LEFT command"); // shouldn't run if execvp succeeds
+    exit(EXIT_FAILURE);
+  }
+  // ------------ CHILD BUSINESS ------------
+  else
+  {
+    // child doesn't need to read
+    close(pipeFD[WRITE]);
+
+    // redirect stout to pipe's write file
+    if (dup2(pipeFD[READ], 0) < 0) {
+      perror("dup2 failed in left child");
+      exit(EXIT_FAILURE);
+    }
+    
+    // allocate and copy RIGHT tokens
+    int rightCount = 0;
+    for (int i = pipei + 1; args[i] != NULL; i++) rightCount++;
+
+    char **rightTokens = malloc((rightCount + 1) * sizeof(char*));
+
+    if (rightTokens == NULL) {
+      perror("malloc failed for right tokens");
+      free(rightTokens);
+      return -1;
+    }
+
+    for (int i = pipei + 1, j = 0; args[i] != NULL; i++, j++) rightTokens[j] = args[i];
+  
+    // add NULL at the end of the right token array
+    rightTokens[rightCount] = NULL;
+    
+    //clean args made----------------
+    char **clArgs = cleanArgs(rightTokens);
+    free(rightTokens);
+
+    // execute right command
+    execvp(clArgs[0], clArgs);
+    free(clArgs);
+    perror("execvp failed for RIGHT command"); // shouldn't run if execvp succeeds
+    exit(EXIT_FAILURE);
+
+  }
+
+  wait(NULL);  
 
 }
 
@@ -119,7 +265,8 @@ int doPipe(char **args, int pipei)
 int main()
 {
   bool should_run = true;          // loop until false
-  char *line = calloc(1, MAXLINE); // holds user input
+  //line and history made--------------------
+  char *line = NULL; // holds user input
   char *history = calloc(1, MAXLINE);
 
   int start = 0; // index into args array
@@ -137,7 +284,72 @@ int main()
       should_run = false;
       continue;
     }
-
+    /*
+    if (equal(line, "ascii"))
+    {
+      printf(
+      " \n"
+      "%%%##**++=-----::-===++***##**+==+#############%####**++======+++*+**+******* \n"
+      "*******++===--------==++++*+===---=*#%%%%##*++===--==+++**********#########** \n"
+      "*******+++==--===+**#%%*=--:::=+*+=--==---==+++*****+******######%@%%##%%###* \n"
+      "###***++++*#%%%#*+===--------=+*****++*************##############%%%###%%%%%* \n"
+      "+**#%%%#*+===-----:::-----==+*#******+***########################%%%###%%%%%# \n"
+      "*+====--------::---=+*********#*******+############*#############%%%###%%%%## \n"
+      "---------===+**###*#*#######****+++**#**########################%%%####%%%%## \n"
+      "-==++**#####*#####%#########***+===+*##**##########*############%%%####%%%%#% \n"
+      "############%%%###%###%#####***+====+*###*#########*############%%%###%%%%%%@ \n"
+      "########%%####%%%%%###%#####***+====+**##***********############%%%###%%%%#%@ \n"
+      "#########%%#####%%%%%%####*****+====+**##*+++++*****############%%%###%%%#%@ \n"
+      "##########%%#####%%%%**+*+++*+=====++**#%#*+====+++**###########%%%###%%%#*=+ \n"
+      "###########%%######*+++++*+**+==++++*##%%%#*++====--=-=+*######%%%##**++=+*** \n"
+      "############%%###*+++**#####*++*++*****##%%##***+==-=-==---=====++**+=+##**** \n"
+      "#############%%*****##%%%%%#*+*+=+*##%%%%%%####**++======+++******++***++++*% \n"
+      "#############%#**###%%%%%%%#*#***#############**+++++++*++****+*+**#**++++*## \n"
+      "#############***##%%%%%%%%#+***###**##########**++++*+++**#####%%###*+++*##%% \n"
+      "############*+*##%%%%%%%%*++*****++**##*+####*************######%#*+****###%% \n"
+      "###########*+*##%%%%%%%%+++++**++=+**##**#%#*+******###***#####***##**####### \n"
+      "##########*++*##%%%%%%%#++++*****##***#*#%%**++**#*####**#*##**#*+*#%%%%##### \n"
+      "#######%%%*+**##%%%%%%%#++*+++++=*#%%@#####**+**#######*#%#*****####%%%%%%%## \n"
+      "######%%%#****#####%%%%#+++++***=**%@@@%%#####**######*####++****##%%%%%%%%@% \n"
+      "#####%@%#**+**#######%%%+=++***#*+**%%**%#++#**#######*###++**++++*#%%%%%%%%% \n"
+      "%%%%@@@%#**++*###*###%%%*==++***##***+*###++*+***##%%%%###*******++*%%%%%%%%% \n"
+      "%%%@@@@%#***+**###**#%%%*=+*++**####*+==**++++***##%##%@@@@#%%##***#%%%%%%%%% \n"
+      "@@@@@@%%###*++**###%%%%#+=+*******##**+++*+===+***#*#%%@@@#%%****###%%%%%%%%% \n"
+      "%@@@@@@%%%##+=+*###%%%#+=--+##**###*++++++=====++**##+*****+***+*###%%%%%%%%% \n"
+      "%@@@@@@%%#**==++**#%%#*=---=**#*+=++*++++++=--===+*+++++********#%###%%%%%%%% \n"
+      "@@@@@@@%%%%#+==+++**##+=-::-=+**=+=+**+==++==-==+*++********###%%%##*#%%%%%%% \n"
+      "@@@@@@@%%%%#+==++++***+=-:::-=====+**++==**++===**++***##****###%%##*#%%%%%%% \n"
+      "@@@@@@@@%%%##++=++++*++=--:::-==++++++==-+###*###++****#######%%%%%%#%%%%%%%% \n"
+      "@@@@@@%%%%%%%%##*##*++=+=-:::--==++++++===*%%%#**+**+++*##*++*#%%%%%%%%%%%%%% \n"
+      "%@@@@%@@%%%%%%@%%%%#++=+=---::--===++**++++**********+++*++*#######%%@@%%%%%% \n"
+      "#%@@@@%%@%%%%%%@@%#+=++++=----:---==+++**###*******+++++==++*####%%%@@@@%%%%% \n"
+      "*#@@@@@@@@%%%@%@@#++=====+=--::::---==++++++++++++=+=+++++++*##%%%@%%%@%%%%%% \n"
+      "*#%@@@@@%%@%%@@@#**#*++++==+=--:::---===+++++++++++=+==++=++#*#%%%@@@%##%%%%% \n"
+      "**%@@@@%@@@@@@%#+==+##*++*+====---::---==+++++++++=++++++**#%%%#%@%%%%%%%%%%% \n"
+      "**#@@@@@@@@@@@%+=====+*##***+===--:----===++++++++++++**#*%%%%@@%#%%#%%%%%%%% \n"
+      "**#@@@@@@@@@@%*=====+**++*%%#*+==--:::--==+++++++++*##%##%#%@@@@@%##%%#%%%%%% \n"
+      "@@@@@@@@@@@@@#+++==+*#**=+=+***+==----===+++*****#####%%%@%%@@%%%%%##%%#%%%%% \n"
+      "@@@@@@@@@@@@@%+=====+++++===+=+*#*+===++++***######%%@@@@@@@@@@#%%%%%#%%%#%%% \n"
+      "@@@@@@@@@@@@@%*+++======+++*+=+%@@@@%%#######%%%@@@@@@@@@@@%%%%%#%%%%#%#%%%%% \n"
+      "@@@@@@@@@@@@@@%#++=+=====+++*%%%%%%@@@@@@@@@@@@@@@@@@@@@@@@%%%%%%#%%%#%%#%%#% \n"
+      "@@@@@@@@@@@@@@@@%##***++*#%%%%%%%%%%%%%@%@@@@@@@@@@@@@@@%%%%%%%%%#%%%%#%%%%%% \n"
+      "@@@@@@@@@@@@@@@%%@@@@@@@%%%%%%%%%%%%%%%%%%%%%%@@@@%@@%%%%%%%%%%%%%%%%%#%%%%%# \n"
+      "@@@@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#%%%%%%%%%% \n"
+      "@@@%@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% \n"
+      "@@@%@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@ \n"
+      "@@@%%@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@% \n"
+      "%%@%%@@@@@@@@@@@@@%%%%%%%%%%%%meow%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@%%##% \n"
+      "%%@@%@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@%#**%%@@ \n"
+      "@@@@#**%@@@@@@@@@@%@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@%#**%%@@@@@ \n"
+      "@@@%#%%@@@@@@@@@@@%@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@%%#**#%@@@@@@@@ \n"
+      "@@@@@@%@@@@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@%%#**#%%%@@@@@@@@@ \n"
+      "@@@@@@@@@@@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@%%%##**#%%%%%%%%@@@@%## \n"
+      "@@@@@@@@@@@@@@@@@@@@@@@@@%%%%%%%%%%%%%%%%%%%%@@@@@%%%##***#%%%########%@@%%%% \n");
+      strcpy(history, line);
+      continue;
+    }
+    */
+    
     if (equal(line, "!!"))
     {
       // gethistory
@@ -176,10 +388,12 @@ int main()
     {
       free(args[i]);
     }
-      free(args);
+    free(args);
+    //args freed--------------------
   }
-  
+  if(line != NULL) free(line);
   free(history);
+  //line and history freed--------------------
   return 0;
 }
 
@@ -228,11 +442,12 @@ char **tokenize(char *line)
   char* linecpy = strdup(line);
 
   char* token;
-  token = strtok(linecpy, " ");
+  const char* delims = " ;&";
+  token = strtok(linecpy, delims);
   while(token != NULL)
   {
     tknCnt++;
-    token = strtok(NULL, " ");
+    token = strtok(NULL, delims);
   }
   free(linecpy);
 
@@ -240,15 +455,20 @@ char **tokenize(char *line)
 
   int i = 0;
   tokens = (char**)malloc((tknCnt+1) * sizeof(char*));
-  token = strtok(linecpy, " ");
+  token = strtok(linecpy, delims);
   while(token != NULL)
   {
     tokens[i++] = strdup(token);
-    token = strtok(NULL, " ");
+    token = strtok(NULL, delims);
   }
   tokens[tknCnt] = NULL;
 
   free(linecpy);
+
+  for(int i = 0; tokens[i] != NULL; ++i)
+  {
+    printf("%s\n", tokens[i]);
+  }
 
   return tokens;
 }
