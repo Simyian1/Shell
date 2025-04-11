@@ -376,7 +376,7 @@ int main()
     {
       int end;
       bool waitfor = parse(args, start, &end);// parse() checks if current command ends with ";" or "&"  or nothing. if it does not end with anything treat it as ; or blocking call. Parse updates "end" to the index of the last token before ; or & or simply nothing
-      doCommand(args, start, end, waitfor);    // execute sub-command
+      if (end >= start) doCommand(args, start, end, waitfor);   // execute sub-command
       start = end + 1;                       // next command
       while (args[start] != NULL && (equal(args[start], "&") || equal(args[start], ";"))) start++;
     }
@@ -427,7 +427,7 @@ bool parse(char **args, int start, int *end)
     return true;
   }
 
-  return !equal(*curr, "&"); 
+  return equal(*curr, "&"); 
 }
 
 // ============================================================================
@@ -442,7 +442,7 @@ char **tokenize(char *line)
   char* linecpy = strdup(line);
 
   char* token;
-  const char* delims = " ;&";
+  const char* delims = " ";
   token = strtok(linecpy, delims);
   while(token != NULL)
   {
@@ -464,11 +464,6 @@ char **tokenize(char *line)
   tokens[tknCnt] = NULL;
 
   free(linecpy);
-
-  for(int i = 0; tokens[i] != NULL; ++i)
-  {
-    printf("%s\n", tokens[i]);
-  }
 
   return tokens;
 }
