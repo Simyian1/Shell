@@ -298,6 +298,71 @@ void processCommand(char **args)
   }
 }
 
+char* subsituteBackticks(char* token) {
+  int token_length = strlen(token);
+
+  // remove the backticks
+  // - 1 instead of -2 because of \0 at the end
+  char* command = malloc(token_length - 1);
+
+  int command_length = token_length - 2; // the length of the token with backticks removed
+
+  // strncpy (with an n) instead of strcopy
+  strncpy(command, token + 1, command_length);
+  command[token_length] = '\0';
+
+  int pipeFD[2];
+  
+  if (pipe(pipeFD) < 0) {
+    perror("Pipe in backtick substitution failed");
+    exit(EXIT_FAILURE);
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    perror("Fork in backtick substition failed");
+    exit(EXIT_FAILURE);
+  }
+
+  if (pid == 0) { // CHILD PROCESS (will execute command)
+    
+    close(pipeFD[READ]); // child is only writing into the pipe, not reading from it
+    dup2(pipeFD[WRITE], 1); // hijack stdout
+
+    // make the command array so that execvp can use it. (I just set the arguments to NULL)
+    char* commandArgs[2];
+    commandArgs[0] = command;
+    commandArgs[1] = NULL;
+
+    execvp(commandArgs[0], commandArgs);
+
+    // if this runs, an error has occurred
+    perror("execvp in backtick substitution failed");
+    exit(EXIT_FAILURE);
+
+
+  } else { // PARENT PROCESS (will read the result of the executed command)
+
+    // parent is only reading, not writing
+    close(pipeFD[WRITE]);
+
+    char buf[256];
+    int result_size = read(pipeFD[READ], buf, 256);
+    buf[result_size] = '\0';
+    
+    // wait until the child finishes
+    wait(NULL);
+
+    free(command);
+
+    // main() should free this
+    return strdup(buf);
+
+  }
+
+
+}
+
 // ============================================================================
 // Main loop for our Unix shell interpreter
 // ============================================================================
@@ -348,6 +413,18 @@ int main()
     
     // process lines
     char **args = tokenize(line); // split string into tokens
+    
+    // process lines for backticks
+    for (int i = 0; args[i] != NULL; i++) {
+      if (args[i][0] == '`' && args[i][strlen(args[i]) - 1] == '`') {
+        // token begins and ends in a backtick
+        char *executed_token = subsituteBackticks(args[i]);
+
+        // replace old token (`whoami`) with new token (username)
+        free(args[i]);
+        args[i] = executed_token;
+      }
+    }
     
     int tokenCount = 0;
     while (args[tokenCount] != NULL) tokenCount++;
