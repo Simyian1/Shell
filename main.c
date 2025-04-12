@@ -324,14 +324,6 @@ int main()
       continue;
     }
     
-    if (equal(line, "ascii"))
-    {
-      printf("\n%s\n",ASCII_ART);
-      strcpy(history, line);
-      continue;
-    }
-    
-    
     if (equal(line, "!!"))
     {
       // gethistory
@@ -345,6 +337,14 @@ int main()
         strcpy(line, history);
       }
     }
+
+    if (equal(line, "ascii"))
+    {
+      printf("\n%s\n",ASCII_ART);
+      strcpy(history, line);
+      continue;
+    }
+    
     
     // process lines
     char **args = tokenize(line); // split string into tokens
