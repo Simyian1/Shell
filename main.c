@@ -313,7 +313,9 @@ char* subsituteBackticks(char* token) {
 
   // strncpy (with an n) instead of strcopy
   strncpy(command, token + 1, commandLen);
-  command[tokenLen] = '\0';
+  command[commandLen] = '\0';
+
+  char **commandArgs = tokenize(command);
 
   int pipeFD[2];
   
@@ -334,9 +336,10 @@ char* subsituteBackticks(char* token) {
     dup2(pipeFD[WRITE], 1); // hijack stdout
 
     // make the command array so that execvp can use it. (I just set the arguments to NULL)
-    char* commandArgs[2];
-    commandArgs[0] = command;
-    commandArgs[1] = NULL;
+    // char* commandArgs[2];
+    // commandArgs[0] = command;
+    // commandArgs[1] = NULL;
+
 
     execvp(commandArgs[0], commandArgs);
 
